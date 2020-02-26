@@ -10,10 +10,11 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 
 import com.comphenix.protocol.ProtocolManager;
+import com.comphenix.protocol.events.PacketContainer;
 
 public class ChatManager {
-	private DotChat plugin;
 	private ProtocolManager protocolManager;
+	private Format formatting;
 	private ChatChannel multiChannel = null;
 	private ChatChannel defaultChannel = null;
 	private ChatChannel systemMessageChannel = null;
@@ -21,7 +22,6 @@ public class ChatManager {
 	private HashMap<UUID, PlayerChatManager> playerManagers;
 	
 	public ChatManager(DotChat plugin, ProtocolManager protocolManager) {
-		this.plugin = plugin;
 		this.protocolManager = protocolManager;
 		this.channels = new HashMap<String, ChatChannel>();
 		this.playerManagers = new HashMap<UUID, PlayerChatManager>();
@@ -29,11 +29,14 @@ public class ChatManager {
 		int channelOrder = 0;
 		
 		FileConfiguration config = plugin.getConfig();
+		this.formatting = new Format(config.getConfigurationSection("format"));
+				
 		if(config.getBoolean("enable-all", true)) {
 			multiChannel = new ChatChannel(
 					"all", 
 					channelOrder++,
-					"All", 
+					this.formatting.getAllTabName(), 
+					this.formatting.getAllTabActiveName(), 
 					true, 
 					true, 
 					true,
@@ -48,7 +51,8 @@ public class ChatManager {
 			channels.put("global", new ChatChannel(
 					"global", 
 					channelOrder++,
-					"Global", 
+					"§7Global",
+					"§7§lGlobal",
 					false, 
 					true, 
 					true,
@@ -59,10 +63,12 @@ public class ChatManager {
 		} else {
 			for(String channel : channelsSection.getKeys(false)) {
 				ConfigurationSection channelSection = channelsSection.getConfigurationSection(channel);
+				String displayName = channelSection.getString("name", "§7" + channel);
 				channels.put(channel, new ChatChannel(
 						channel, 
 						channelOrder++,
-						channelSection.getString("name", channel), 
+						displayName, 
+						channelSection.getString("name-active", displayName), 
 						false, 
 						channelSection.getBoolean("public", true), 
 						channelSection.getBoolean("auto-join", true),
@@ -85,18 +91,23 @@ public class ChatManager {
 			}
 		}
 		
-		for(ChatChannel channel : channels.values())
+		List<ChatChannel> sortedList = new ArrayList<ChatChannel>(channels.values());
+		sortedList.sort((a, b) -> a.getOrder() - b.getOrder());
+		
+		for(ChatChannel channel : sortedList) {
 			if(!channel.isMultiChannel() && channel.isPublic() && channel.isAutoJoin() && !channel.canLeave()) {
 				defaultChannel = channel;
 				break;
 			}
+		}
 		
 		if(defaultChannel == null) {
 			plugin.getLogger().warning("You must have at least 1 channel that is public, auto-joined, and cannot be left. " + (channels.containsKey("global") ? "Replaced" : "Added") + " global channel with these properties.");
 			channels.put("global", new ChatChannel(
 					"global",
 					channelOrder++,
-					"Global",
+					"§7Global",
+					"§7§lGlobal",
 					false,
 					true,
 					true,
@@ -123,7 +134,7 @@ public class ChatManager {
 		
 		if(manager == null) {
 			List<ChatChannel> channels = getDefaultPlayerChannels(player);
-			manager = new PlayerChatManager(protocolManager, this, player, multiChannel != null ? multiChannel : defaultChannel, defaultChannel, channels);
+			manager = new PlayerChatManager(protocolManager, this, formatting, player, multiChannel != null ? multiChannel : defaultChannel, defaultChannel, channels);
 			playerManagers.put(player.getUniqueId(), manager);
 		}
 		
@@ -147,5 +158,14 @@ public class ChatManager {
 		}
 		
 		return channels;
+	}
+
+	public void addMessageHistory(ChatChannel chatChannel, PacketContainer chatPacket) {
+		chatChannel.addMessage(chatPacket);
+		
+		if(chatChannel.isAutoJoin() && chatChannel.sendHistory()) {
+			multiChannel.addMessage(ChatUtilities.addChannelPrefix(chatPacket, formatting.getAllSourceName(chatChannel.getDisplayName(false))));
+		}
+		
 	}
 }

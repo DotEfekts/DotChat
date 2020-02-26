@@ -3,7 +3,6 @@ package net.dotefekts.dotchat;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Queue;
@@ -14,32 +13,32 @@ import org.bukkit.entity.Player;
 
 import com.comphenix.protocol.ProtocolManager;
 import com.comphenix.protocol.events.PacketContainer;
-import com.comphenix.protocol.wrappers.WrappedChatComponent;
 
-import net.md_5.bungee.api.ChatColor;
+import net.dotefekts.dotchat.Format.ChatType;
 import net.md_5.bungee.api.chat.BaseComponent;
 import net.md_5.bungee.api.chat.ClickEvent;
 import net.md_5.bungee.api.chat.ClickEvent.Action;
-import net.md_5.bungee.api.chat.TextComponent;
 import net.md_5.bungee.chat.ComponentSerializer;
 
 public class PlayerChatManager {
-	private static String SEPERATOR = "{\"text\":\"==================================================\",\"color\":\"gray\"}";
-	
 	private ProtocolManager protocolManager;
 	private ChatManager chatManager;
+	private Format formatting;
 	private Player player;
 	private ChatChannel activeChannel;
+	private ChatChannel lastAvailableChatChannel;
 	private ChatChannel activeChatChannel;
 	private SortedMap<ChatChannel, Queue<PacketContainer>> channelMessages;
 	private HashMap<ChatChannel, Integer> unreadMessages;
 	
-	public PlayerChatManager(ProtocolManager protocolManager, ChatManager chatManager, Player player, ChatChannel defaultChannel, ChatChannel defaultChatChannel, List<ChatChannel> channels) {
+	public PlayerChatManager(ProtocolManager protocolManager, ChatManager chatManager, Format formatting, Player player, ChatChannel defaultChannel, ChatChannel defaultChatChannel, List<ChatChannel> channels) {
 		this.protocolManager = protocolManager;
 		this.chatManager = chatManager;
+		this.formatting = formatting;
 		this.player = player;
 		this.activeChannel = defaultChannel;
 		this.activeChatChannel = defaultChatChannel;
+		this.lastAvailableChatChannel = defaultChatChannel;
 		this.channelMessages = new TreeMap<ChatChannel, Queue<PacketContainer>>((a, b) -> a.getOrder() - b.getOrder());
 		this.unreadMessages = new HashMap<ChatChannel, Integer>();
 		
@@ -76,17 +75,10 @@ public class PlayerChatManager {
 			}
 
 			if(chatManager.getMultiChannel() != null) {
-				PacketContainer multiMessage = message.shallowClone();
-				
-				WrappedChatComponent chatComponent = multiMessage.getChatComponents().readSafely(0);
-				List<BaseComponent> messageComponents = new ArrayList<BaseComponent>(Arrays.asList(ComponentSerializer.parse(chatComponent.getJson())));
-				messageComponents.add(0, new TextComponent("[" + sourceChannel.getDisplayName() + "] "));
-				chatComponent.setJson(ComponentSerializer.toString(messageComponents.toArray(new BaseComponent[messageComponents.size()])));
-				
-				multiMessage.getChatComponents().write(0, chatComponent);
+				PacketContainer prefixedMessage = ChatUtilities.addChannelPrefix(message, formatting.getAllSourceName(sourceChannel.getDisplayName(false)));
 				
 				Queue<PacketContainer> multiChannelQueue = channelMessages.get(chatManager.getMultiChannel());
-				multiChannelQueue.add(multiMessage);
+				multiChannelQueue.add(prefixedMessage);
 				while(multiChannelQueue.size() > ChatChannel.CHAT_LIMIT) {
 					multiChannelQueue.poll();
 				}
@@ -127,9 +119,13 @@ public class PlayerChatManager {
 			
 			if(activeChannel.isMultiChannel()) {
 				unreadMessages.replaceAll((c, i) -> 0);
+				activeChatChannel = lastAvailableChatChannel;
 			} else {
 				activeChatChannel = channel;
 				unreadMessages.put(channel, 0);
+				
+				if(activeChatChannel.canTalk())
+					lastAvailableChatChannel = activeChatChannel;
 			}
 			
 			sendMessages();
@@ -150,7 +146,8 @@ public class PlayerChatManager {
 		}
 		
 		try {
-			protocolManager.sendServerPacket(player, ChatUtilities.buildChatPacket(SEPERATOR, true, true), false);
+			if(formatting.getChatSeparator() != null)
+				protocolManager.sendServerPacket(player, ChatUtilities.buildChatPacket(ComponentSerializer.toString(formatting.getChatSeparator()), true, true), false);
 			protocolManager.sendServerPacket(player, ChatUtilities.buildChatPacket(buildTabJson(), true, true), false);
 		} catch (InvocationTargetException e) {
 			e.printStackTrace();
@@ -163,31 +160,19 @@ public class PlayerChatManager {
 		boolean first = true;
 		for(ChatChannel channel : channelMessages.keySet()) {
 			if(!first) {
-				TextComponent seperatorComponent = new TextComponent("|");
-				seperatorComponent.setColor(ChatColor.GRAY);
-				components.add(seperatorComponent);
+				components.addAll(Arrays.asList(formatting.getTabSeparator()));
 			}
 			
-			List<BaseComponent> channelComponents = new ArrayList<BaseComponent>(Arrays.asList(TextComponent.fromLegacyText(" " + org.bukkit.ChatColor.GRAY + channel.getDisplayName())));
+			Format.ChatType type;
 			if(activeChannel == channel) {
-				for(BaseComponent c : channelComponents)
-					c.setBold(true);
-			} else if(unreadMessages.get(channel) > 0) {
-				TextComponent left = new TextComponent("(");
-				TextComponent number = new TextComponent(unreadMessages.get(channel).toString());
-				TextComponent right = new TextComponent(")");
-
-				left.setColor(ChatColor.GRAY);
-				number.setColor(ChatColor.YELLOW);
-				right.setColor(ChatColor.GRAY);
-				
-				channelComponents.add(left);
-				channelComponents.add(number);
-				channelComponents.add(right);
+				type = ChatType.ACTIVE;
+			} else if(activeChatChannel == channel) {
+				type = ChatType.CHATTING;
+			} else {
+				type = ChatType.INACTIVE;
 			}
 			
-			channelComponents.add(new TextComponent(" "));
-			
+			List<BaseComponent> channelComponents = new ArrayList<BaseComponent>(Arrays.asList(formatting.getTabName(channel, type, unreadMessages.get(channel))));
 			for(BaseComponent c : channelComponents)
 				c.setClickEvent(new ClickEvent(Action.RUN_COMMAND, "/ch " + channel.getName()));
 			

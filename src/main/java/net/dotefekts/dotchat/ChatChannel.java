@@ -17,6 +17,7 @@ public class ChatChannel {
 	private String channelName;
 	private int channelOrder;
 	private String displayName;
+	private String displayNameActive;
 	private boolean isMultiChannel;
 	private boolean isPublic;
 	private boolean autoJoin;
@@ -30,10 +31,11 @@ public class ChatChannel {
 		BLANK_MESSAGE = ChatUtilities.buildChatPacket("", false, true);
 	}
 	
-	public ChatChannel(String channelName, int channelOrder, String displayName, boolean isMultiChannel, boolean isPublic, boolean autoJoin, boolean canLeave, boolean canTalk, boolean sendHistory) {
+	public ChatChannel(String channelName, int channelOrder, String displayName, String displayNameActive, boolean isMultiChannel, boolean isPublic, boolean autoJoin, boolean canLeave, boolean canTalk, boolean sendHistory) {
 		this.channelName = channelName;
 		this.channelOrder = channelOrder;
 		this.displayName = displayName;
+		this.displayNameActive = displayNameActive;
 		this.isMultiChannel = isMultiChannel;
 		this.isPublic = isPublic;
 		this.autoJoin = autoJoin;
@@ -64,8 +66,8 @@ public class ChatChannel {
 		return channelOrder;
 	}
 	
-	public String getDisplayName() {
-		return displayName;
+	public String getDisplayName(boolean active) {
+		return active ? displayNameActive : displayName;
 	}
 	
 	public boolean canJoin(Player player) {
@@ -90,6 +92,10 @@ public class ChatChannel {
 	
 	public boolean canTalk() {
 		return canTalk;
+	}
+	
+	public boolean sendHistory() {
+		return sendHistory;
 	}
 	
 	public Queue<PacketContainer> getHistory() {

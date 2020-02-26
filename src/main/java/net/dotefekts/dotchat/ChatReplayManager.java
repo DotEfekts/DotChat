@@ -1,8 +1,5 @@
 package net.dotefekts.dotchat;
 
-import java.util.HashMap;
-import java.util.UUID;
-
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -18,22 +15,18 @@ import com.comphenix.protocol.events.PacketEvent;
 import com.comphenix.protocol.wrappers.EnumWrappers.ChatType;
 import com.comphenix.protocol.wrappers.WrappedChatComponent;
 
+import net.md_5.bungee.api.ChatColor;
 import net.md_5.bungee.api.chat.BaseComponent;
 import net.md_5.bungee.chat.ComponentSerializer;
 
 public class ChatReplayManager implements Listener {
-	private static final String CHAT_PREFIX = "dotchat.p:";
+	private static final String MARKER_PREFIX = "\u0091[";
+	private static final String MARKER_SUFFIX = "] ";
 	
-	private ProtocolManager protocolManager;
-	private DotChat plugin;
 	private ChatManager chatManager;
-	private HashMap<String, ChatChannel> messageChannels;
 	
 	public ChatReplayManager(DotChat plugin, ProtocolManager protocolManager, ChatManager chatManager) {
-		this.plugin = plugin;
-		this.protocolManager = protocolManager;
 		this.chatManager = chatManager;
-		this.messageChannels = new HashMap<String, ChatChannel>();
 		
 		protocolManager.addPacketListener(new PacketAdapter(plugin, ListenerPriority.HIGHEST, PacketType.Play.Server.CHAT) {
 			@Override
@@ -45,11 +38,11 @@ public class ChatReplayManager implements Listener {
 					String messageJson = event.getPacket().getChatComponents().readSafely(0).getJson();
 					String messagePlain = BaseComponent.toPlainText(ComponentSerializer.parse(messageJson));
 					
-					if(messagePlain.startsWith(CHAT_PREFIX)) {
-						UUID playerUUID = UUID.fromString(messagePlain.substring(CHAT_PREFIX.length(), messagePlain.indexOf(';')));
-						ChatChannel sourceChannel = chatManager.getPlayerManager(playerUUID).getActiveChatChannel();
+					if(messagePlain.startsWith(MARKER_PREFIX)) {
+						String channelName = messagePlain.substring(MARKER_PREFIX.length(), messagePlain.indexOf(MARKER_SUFFIX));
+						ChatChannel sourceChannel = chatManager.getChannel(channelName);
 
-						String fixedMessage = messageJson.replace(CHAT_PREFIX + playerUUID.toString() + ";", "");
+						String fixedMessage = messageJson.replace(MARKER_PREFIX + channelName + MARKER_SUFFIX, "");
 						WrappedChatComponent chatComponent = event.getPacket().getChatComponents().readSafely(0);
 						chatComponent.setJson(fixedMessage);
 						event.getPacket().getChatComponents().write(0, chatComponent);
@@ -68,15 +61,23 @@ public class ChatReplayManager implements Listener {
 		});
 	}
 	
+	@EventHandler(priority = EventPriority.LOWEST)
+	public void checkCanSend(AsyncPlayerChatEvent event) {
+		PlayerChatManager manager = chatManager.getPlayerManager(event.getPlayer());
+		if(!manager.getActiveChatChannel().canTalk()) {
+			event.setCancelled(true);
+			event.getPlayer().sendMessage(ChatColor.RED + "You cannot send messages to this channel.");
+		}
+	}
+	
 	@EventHandler(priority = EventPriority.MONITOR)
 	public void chatEvent(AsyncPlayerChatEvent event) {
 		PlayerChatManager manager = chatManager.getPlayerManager(event.getPlayer());
 		String message = String.format(event.getFormat(), event.getPlayer().getDisplayName(), event.getMessage());
 		
-		event.setFormat(CHAT_PREFIX + event.getPlayer().getUniqueId() + ";" + event.getFormat());
-		
-		messageChannels.put(message, manager.getActiveChatChannel());
-		manager.getActiveChatChannel().addMessage(ChatUtilities.buildChatPacket(message, true, false));
+		event.setFormat(MARKER_PREFIX + manager.getActiveChatChannel().getName() + MARKER_SUFFIX + event.getFormat());
+
+		chatManager.addMessageHistory(manager.getActiveChatChannel(), ChatUtilities.buildChatPacket(message, false, false));
 	}
 
 	@EventHandler

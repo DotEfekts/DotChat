@@ -1,13 +1,14 @@
 # Whether the all channel should be shown. This channel will combine all tabs into one channel. Defaults to true. 
 # Messages sent while viewing this will be sent to the last selected channel.
 enable-all: true
-# Which channel system messages should be sent to. Set to all to send to all channels. Defaults to all.
-system-messages: all
+# Which channel system messages should be sent to. Set to all to send to all channels. Defaults to system.
+system-messages: system
 # List of channels and their configuration
 channels:
   # Internal channel name. Used for the switching commands, though players shouldn't normally see these. 
   # If channel is private, also forms the permission name in the form of dotchat.channel.<channel>
     # name: The in-game display name of the channel. Defaults to the internal channel name.
+    # name-active: The in-game display name of the channel when selected. Defaults to the internal channel name. This is here as Minecraft resets formatting codes after colors. 
     # public: Whether the channel is public or requires permission to join. Defaults to true.
     # auto-join: Whether players join the channel by default. Defaults to true.
     # can-leave: Whether players can leave this channel. Defaults to true.
@@ -15,24 +16,56 @@ channels:
     #           This should generally be true unless you have a dedicated system messages channel.
     # history: Whether players are sent the chat history after joining the channel. Defaults to true.
   global:
-    name: Global
+    name: "§7Global"
+    name-active: "§7§lGlobal"
     public: true
     auto-join: true
     can-leave: false
     can-talk: true
     history: true
+  system:
+    name: "§eSystem"
+    name-active: "§e§lSystem"
+    public: true
+    auto-join: true
+    can-leave: false
+    can-talk: false
+    history: false
   staff:
-    name: Staff
+    name: "§4Staff"
+    name-active: "§4§lStaff"
     public: false
     auto-join: true
     can-leave: false
     can-talk: true
     history: true
   trade:
-    name: Trade
+    name: "§6Trade"
+    name-active: "§6§lTrade"
     public: true
-    auto-join: true
+    auto-join: false
     can-leave: true
     can-talk: true
-    history: false
+    history: true
+# Sets the formatting for different aspects of the plugin
+format:
+  # The format of the separator between the chat and the tabs. Leave blank to disable.
+  chat-separator: "§8=================================================="
+  # The format of the separator between each tab.
+  tab-separator: "§8|"
+  # The format of each tab name. Key; 
+  # $n: Standard name display. $a: name-active display. 
+  # $u{}: Unread message format, will hide everything inside {} when there are none. $u: The number of unread messages (inside $u{}).
+  tab-name: " $n$u{§7(§e$u§7)} "
+  # The format of the selected tab name.
+  tab-name-active: " $a "
+  # The format for the name of the tab messages will be send to (when in all).
+  tab-name-chatting: " §8[$n§8] "
+  # The format of the all tab name.
+  all-channel-name: "All"
+  # The format of the all tab name when selected.
+  all-channel-name-active: "§lAll"
+  # The format of the source channel shown in all. Can be left blank.
+  all-source-name: "§8[$n§8] "
+
     
