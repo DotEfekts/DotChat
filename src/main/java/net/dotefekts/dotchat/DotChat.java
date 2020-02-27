@@ -24,6 +24,7 @@ public class DotChat extends JavaPlugin {
     	commandListener = new CommandListener(chatManager);
     	
     	Bukkit.getPluginManager().registerEvents(chatReplayManager, this);
+    	Bukkit.getPluginManager().registerEvents(commandListener, this);
     	DotUtilities.getCommandHelper().registerCommands(commandListener, this);
     	
     	getLogger().info("DotChat has finished loading.");

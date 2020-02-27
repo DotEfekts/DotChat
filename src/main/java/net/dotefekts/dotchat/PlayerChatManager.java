@@ -5,15 +5,15 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map.Entry;
 import java.util.Queue;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.bukkit.entity.Player;
-
 import com.comphenix.protocol.ProtocolManager;
 import com.comphenix.protocol.events.PacketContainer;
-
 import net.dotefekts.dotchat.Format.ChatType;
 import net.md_5.bungee.api.chat.BaseComponent;
 import net.md_5.bungee.api.chat.ClickEvent;
@@ -28,7 +28,7 @@ public class PlayerChatManager {
 	private ChatChannel activeChannel;
 	private ChatChannel lastAvailableChatChannel;
 	private ChatChannel activeChatChannel;
-	private SortedMap<ChatChannel, Queue<PacketContainer>> channelMessages;
+	private SortedMap<ChatChannel, Queue<Message>> channelMessages;
 	private HashMap<ChatChannel, Integer> unreadMessages;
 	
 	public PlayerChatManager(ProtocolManager protocolManager, ChatManager chatManager, Format formatting, Player player, ChatChannel defaultChannel, ChatChannel defaultChatChannel, List<ChatChannel> channels) {
@@ -39,7 +39,7 @@ public class PlayerChatManager {
 		this.activeChannel = defaultChannel;
 		this.activeChatChannel = defaultChatChannel;
 		this.lastAvailableChatChannel = defaultChatChannel;
-		this.channelMessages = new TreeMap<ChatChannel, Queue<PacketContainer>>((a, b) -> a.getOrder() - b.getOrder());
+		this.channelMessages = new TreeMap<ChatChannel, Queue<Message>>((a, b) -> (a != null && b != null ? a.getOrder() - b.getOrder() : (b != null ? 1 : (a != null ? -1 : 0))));
 		this.unreadMessages = new HashMap<ChatChannel, Integer>();
 		
 		for(ChatChannel channel : channels) {
@@ -53,11 +53,48 @@ public class PlayerChatManager {
 			channelMessages.put(defaultChannel, defaultChannel.getHistory());
 			unreadMessages.put(defaultChannel, 0);
 		}
+		
+		rebuildAllMessages();
+	}
+
+	public List<String> getChannelList(boolean includeAll, boolean canLeaveOnly) {
+		return getChannelList(includeAll, canLeaveOnly, "");
+	}
+
+
+	public List<String> getChannelList(boolean includeAll, boolean canLeaveOnly, String prefix) {
+		List<String> channels = new ArrayList<String>();
+		for(ChatChannel c : channelMessages.keySet())
+			if((includeAll || !c.isMultiChannel()) && (!canLeaveOnly || c.canLeave()) && c.getName().startsWith(prefix))
+				channels.add(c.getName());
+		return channels;
 	}
 	
+	
+//	private void sendScoreboardPlayer(ChatChannel channel) {
+//		PacketContainer packet = new PacketContainer(PacketType.Play.Server.PLAYER_INFO);
+//		
+//		WrappedGameProfile gameProfile = new WrappedGameProfile(UUID.nameUUIDFromBytes(channel.getName().getBytes()), "/tch " + channel.getName());
+//		gameProfile.getProperties().put("textures", new WrappedSignedProperty("textures", SkinTextures.TAB_BLANK.Texture, SkinTextures.TAB_BLANK.Signature));
+//		
+//		PlayerInfoData playerInfo = new PlayerInfoData(gameProfile, 0, NativeGameMode.NOT_SET, WrappedChatComponent.fromText(""));
+//		List<PlayerInfoData> infoDataList = new ArrayList<PlayerInfoData>();
+//		infoDataList.add(playerInfo);
+//		
+//		packet.getPlayerInfoAction().write(0, PlayerInfoAction.ADD_PLAYER);
+//		packet.getPlayerInfoDataLists().write(0, infoDataList);
+//		
+//		try {
+//			protocolManager.sendServerPacket(player, packet);
+//		} catch (InvocationTargetException e) {
+//			e.printStackTrace();
+//		}
+//	}
+
 	public void sendAllMessage(PacketContainer message) {
-		for(Queue<PacketContainer> channelQueue : channelMessages.values()) {
-			channelQueue.add(message);
+		long currTime = System.currentTimeMillis();
+		for(Queue<Message> channelQueue : channelMessages.values()) {
+			channelQueue.add(new Message(message, currTime));
 			while(channelQueue.size() > ChatChannel.CHAT_LIMIT) {
 				channelQueue.poll();
 			}
@@ -68,17 +105,19 @@ public class PlayerChatManager {
 	
 	public void sendMessage(ChatChannel sourceChannel, PacketContainer message) {
 		if(channelMessages.containsKey(sourceChannel)) {
-			Queue<PacketContainer> channelQueue = channelMessages.get(sourceChannel);
-			channelQueue.add(message);
+			long currTime = System.currentTimeMillis();
+			Queue<Message> channelQueue = channelMessages.get(sourceChannel);
+			
+			channelQueue.add(new Message(message, currTime));
 			while(channelQueue.size() > ChatChannel.CHAT_LIMIT) {
 				channelQueue.poll();
 			}
 
 			if(chatManager.getMultiChannel() != null) {
-				PacketContainer prefixedMessage = ChatUtilities.addChannelPrefix(message, formatting.getAllSourceName(sourceChannel.getDisplayName(false)));
+				PacketContainer prefixedMessage = ChatUtilities.addChannelPrefix(message, formatting.getAllSourceName(sourceChannel));
 				
-				Queue<PacketContainer> multiChannelQueue = channelMessages.get(chatManager.getMultiChannel());
-				multiChannelQueue.add(prefixedMessage);
+				Queue<Message> multiChannelQueue = channelMessages.get(chatManager.getMultiChannel());
+				multiChannelQueue.add(new Message(prefixedMessage, currTime));
 				while(multiChannelQueue.size() > ChatChannel.CHAT_LIMIT) {
 					multiChannelQueue.poll();
 				}
@@ -105,12 +144,45 @@ public class PlayerChatManager {
 			channelMessages.put(channel, channel.getHistory());
 			unreadMessages.put(channel, 0);
 			
+			rebuildAllMessages();
+			
 			switchChannel(channel);
 			
 			return true;
 		}
 		
 		return false;
+	}
+	
+	public boolean inChannel(ChatChannel channel) {
+		return channelMessages.containsKey(channel);
+	}
+
+	public boolean leaveChannel(ChatChannel channel) {
+		if(channelMessages.containsKey(channel)) {
+			if(!channel.canLeave())
+				return false;
+			
+			if(activeChannel == channel)
+				activeChannel = chatManager.getDefaultChannel();
+			
+			if(activeChatChannel == channel) {
+				activeChatChannel = chatManager.getDefaultChatChannel();
+				if(activeChatChannel.canTalk())
+					lastAvailableChatChannel = chatManager.getDefaultChatChannel();
+			}
+			
+			if(lastAvailableChatChannel == channel)
+				lastAvailableChatChannel = chatManager.getDefaultChatChannel();
+			
+			channelMessages.remove(channel);
+			unreadMessages.remove(channel);
+			
+			rebuildAllMessages();
+			sendMessages();
+		}
+		
+		return true;
 	}
 
 	public boolean switchChannel(ChatChannel channel) {
@@ -135,11 +207,58 @@ public class PlayerChatManager {
 			return false;
 		}
 	}
+
+	public boolean switchChatChannel(ChatChannel channel) {
+		if(channelMessages.containsKey(channel)) {
+			activeChatChannel = channel;
+			
+			if(!activeChannel.isMultiChannel())
+				activeChannel = channel;
+			
+			if(channel.canTalk())
+				lastAvailableChatChannel = channel;
+			
+			sendMessages();
+			
+			return true;
+		} else {
+			return false;
+		}
+	}
+
+	private void rebuildAllMessages() {
+		if(chatManager.getMultiChannel() != null && channelMessages.get(chatManager.getMultiChannel()) != null) {
+			channelMessages.get(chatManager.getMultiChannel()).clear();
+			List<Message> messages = new ArrayList<Message>();
+
+			for(int i = 0; i < ChatChannel.CHAT_LIMIT; i++)
+				messages.add(new Message(ChatChannel.BLANK_MESSAGE.shallowClone(), 0));
+			
+			for(Entry<ChatChannel, Queue<Message>> channelEntry : channelMessages.entrySet())
+				for(Message message : channelEntry.getValue())
+					if(message.getTime() != 0)
+						messages.add(new Message(
+								ChatUtilities.addChannelPrefix(
+									message.getPacket(), 
+									formatting.getAllSourceName(channelEntry.getKey())
+								),
+								message.getTime()));
+			
+			messages.sort((a, b) -> a.getTime() < b.getTime() ? -1 : a.getTime() > b.getTime() ? 1 : 0);
+			
+			Queue<Message> newQueue = new ConcurrentLinkedQueue<Message>(messages);
+			while(newQueue.size() > ChatChannel.CHAT_LIMIT) {
+				newQueue.poll();
+			}
+			
+			channelMessages.put(chatManager.getMultiChannel(), newQueue);
+		}
+	}
 	
 	private void sendMessages() {
-		for(PacketContainer packet : channelMessages.get(activeChannel)) {
+		for(Message message : channelMessages.get(activeChannel)) {
 			try {
-				protocolManager.sendServerPacket(player, packet, false);
+				protocolManager.sendServerPacket(player, message.getPacket(), false);
 			} catch (InvocationTargetException e) {
 				e.printStackTrace();
 			}
@@ -182,5 +301,20 @@ public class PlayerChatManager {
 		}
 		
 		return ComponentSerializer.toString(components.toArray(new BaseComponent[components.size()]));
+	}
+
+	public List<String> getAvailableChannels() {
+		return getAvailableChannels("");
+	}
+
+	public List<String> getAvailableChannels(String prefix) {
+		List<String> playerAvailableChannels = new ArrayList<String>();
+		List<ChatChannel> availableChannels = chatManager.getChannels();
+		
+		for(ChatChannel channel : availableChannels)
+			if(!channelMessages.containsKey(channel) && channel.canJoin(player) && channel.getName().startsWith(prefix))
+				playerAvailableChannels.add(channel.getName());
+		
+		return playerAvailableChannels;
 	}
 }

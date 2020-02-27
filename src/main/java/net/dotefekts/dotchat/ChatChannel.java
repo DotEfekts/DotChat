@@ -10,7 +10,10 @@ import com.comphenix.protocol.events.PacketContainer;
 
 public class ChatChannel {
 	public static final int CHAT_LIMIT = 100;
-	private static final String PERMISSION_PREFIX = "dotchat.channel.";
+	public static final String MARKER_PREFIX = "\u0091[";
+	public static final String MARKER_SUFFIX = "] ";
+	public static final String PERMISSION_PREFIX = "dotchat.channel.";
+	
 	
 	public static PacketContainer BLANK_MESSAGE;
 	
@@ -25,7 +28,7 @@ public class ChatChannel {
 	private boolean canTalk;
 	private boolean sendHistory;
 	
-	private Queue<PacketContainer> chatMessages;
+	private Queue<Message> chatMessages;
 	
 	static {
 		BLANK_MESSAGE = ChatUtilities.buildChatPacket("", false, true);
@@ -43,16 +46,16 @@ public class ChatChannel {
 		this.canTalk = canTalk;
 		this.sendHistory = sendHistory;
 		
-		chatMessages = new ConcurrentLinkedQueue<PacketContainer>();
+		chatMessages = new ConcurrentLinkedQueue<Message>();
 		for(int i = 0; i < CHAT_LIMIT; i++)
-			chatMessages.add(BLANK_MESSAGE.shallowClone());
+			chatMessages.add(new Message(BLANK_MESSAGE.shallowClone(), 0));
 	}
 	
 	public void addMessage(PacketContainer packet) {
 		if(packet.getType() != PacketType.Play.Server.CHAT)
 			return;
 		
-		chatMessages.add(packet);
+		chatMessages.add(new Message(packet, System.currentTimeMillis()));
 		while(chatMessages.size() > CHAT_LIMIT) {
 			chatMessages.poll();
 		}
@@ -98,13 +101,13 @@ public class ChatChannel {
 		return sendHistory;
 	}
 	
-	public Queue<PacketContainer> getHistory() {
+	public Queue<Message> getHistory() {
 		if(sendHistory) {
-			return new ConcurrentLinkedQueue<PacketContainer>(chatMessages);
+			return new ConcurrentLinkedQueue<Message>(chatMessages);
 		} else {
-			Queue<PacketContainer> messages =  new ConcurrentLinkedQueue<PacketContainer>();
+			Queue<Message> messages =  new ConcurrentLinkedQueue<Message>();
 			for(int i = 0; i < CHAT_LIMIT; i++)
-				messages.add(BLANK_MESSAGE.shallowClone());
+				messages.add(new Message(BLANK_MESSAGE.shallowClone(), 0));
 			return messages;
 		}
 	}

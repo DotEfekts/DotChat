@@ -99,8 +99,12 @@ public class Format {
 		return legacyAllNameActive;
 	}
 	
-	public String getAllSourceName(String tabName) {
-		return legacyAllSourceName.replace("$n", tabName);
+	public String getAllSourceName(ChatChannel channel) {
+		String builtText = legacyAllSourceName;
+		builtText = builtText.replace("$n", channel.getDisplayName(false));
+		builtText = builtText.replace("$a", channel.getDisplayName(true));
+		
+		return builtText;
 	}
 	
 	public enum ChatType {

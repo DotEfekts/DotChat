@@ -117,6 +117,10 @@ public class ChatManager {
 		}
 	}
 
+	public List<ChatChannel> getChannels() {
+		return new ArrayList<ChatChannel>(channels.values());
+	}
+
 	public ChatChannel getChannel(String channelName) {
 		return channels.get(channelName);
 	}
@@ -127,6 +131,16 @@ public class ChatManager {
 
 	public ChatChannel getSystemMessageChannel() {
 		return systemMessageChannel;
+	}
+
+	public ChatChannel getDefaultChannel() {
+		return multiChannel != null ? multiChannel : defaultChannel;
+		
+	}
+
+	public ChatChannel getDefaultChatChannel() {
+		return defaultChannel;
+		
 	}
 
 	public PlayerChatManager getPlayerManager(Player player) {
@@ -162,10 +176,5 @@ public class ChatManager {
 
 	public void addMessageHistory(ChatChannel chatChannel, PacketContainer chatPacket) {
 		chatChannel.addMessage(chatPacket);
-		
-		if(chatChannel.isAutoJoin() && chatChannel.sendHistory()) {
-			multiChannel.addMessage(ChatUtilities.addChannelPrefix(chatPacket, formatting.getAllSourceName(chatChannel.getDisplayName(false))));
-		}
-		
 	}
 }

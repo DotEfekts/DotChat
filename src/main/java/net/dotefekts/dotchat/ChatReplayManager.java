@@ -6,7 +6,6 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
-
 import com.comphenix.protocol.PacketType;
 import com.comphenix.protocol.ProtocolManager;
 import com.comphenix.protocol.events.ListenerPriority;
@@ -20,8 +19,6 @@ import net.md_5.bungee.api.chat.BaseComponent;
 import net.md_5.bungee.chat.ComponentSerializer;
 
 public class ChatReplayManager implements Listener {
-	private static final String MARKER_PREFIX = "\u0091[";
-	private static final String MARKER_SUFFIX = "] ";
 	
 	private ChatManager chatManager;
 	
@@ -38,11 +35,11 @@ public class ChatReplayManager implements Listener {
 					String messageJson = event.getPacket().getChatComponents().readSafely(0).getJson();
 					String messagePlain = BaseComponent.toPlainText(ComponentSerializer.parse(messageJson));
 					
-					if(messagePlain.startsWith(MARKER_PREFIX)) {
-						String channelName = messagePlain.substring(MARKER_PREFIX.length(), messagePlain.indexOf(MARKER_SUFFIX));
+					if(messagePlain.startsWith(ChatChannel.MARKER_PREFIX)) {
+						String channelName = messagePlain.substring(ChatChannel.MARKER_PREFIX.length(), messagePlain.indexOf(ChatChannel.MARKER_SUFFIX));
 						ChatChannel sourceChannel = chatManager.getChannel(channelName);
 
-						String fixedMessage = messageJson.replace(MARKER_PREFIX + channelName + MARKER_SUFFIX, "");
+						String fixedMessage = messageJson.replace(ChatChannel.MARKER_PREFIX + channelName + ChatChannel.MARKER_SUFFIX, "");
 						WrappedChatComponent chatComponent = event.getPacket().getChatComponents().readSafely(0);
 						chatComponent.setJson(fixedMessage);
 						event.getPacket().getChatComponents().write(0, chatComponent);
@@ -64,7 +61,22 @@ public class ChatReplayManager implements Listener {
 	@EventHandler(priority = EventPriority.LOWEST)
 	public void checkCanSend(AsyncPlayerChatEvent event) {
 		PlayerChatManager manager = chatManager.getPlayerManager(event.getPlayer());
-		if(!manager.getActiveChatChannel().canTalk()) {
+		ChatChannel currentChannel = manager.getActiveChatChannel();
+		
+		if(event.getMessage().contains(ChatChannel.MARKER_PREFIX)) {
+			ChatChannel newChannel = tryGetChannelName(event.getMessage());
+			if(newChannel != null) {
+				if(manager.inChannel(newChannel))
+					currentChannel = newChannel;
+				else {
+					event.setCancelled(true);
+					event.getPlayer().sendMessage(ChatColor.RED + "You have not joined that channel.");
+					return;
+				}
+			}
+		}
+		
+		if(!currentChannel.canTalk()) {
 			event.setCancelled(true);
 			event.getPlayer().sendMessage(ChatColor.RED + "You cannot send messages to this channel.");
 		}
@@ -73,11 +85,36 @@ public class ChatReplayManager implements Listener {
 	@EventHandler(priority = EventPriority.MONITOR)
 	public void chatEvent(AsyncPlayerChatEvent event) {
 		PlayerChatManager manager = chatManager.getPlayerManager(event.getPlayer());
-		String message = String.format(event.getFormat(), event.getPlayer().getDisplayName(), event.getMessage());
+		ChatChannel currentChannel = manager.getActiveChatChannel();
 		
-		event.setFormat(MARKER_PREFIX + manager.getActiveChatChannel().getName() + MARKER_SUFFIX + event.getFormat());
+		if(event.getMessage().contains(ChatChannel.MARKER_PREFIX)) {
+			ChatChannel newChannel = tryGetChannelName(event.getMessage());
+			if(newChannel != null) {
+				currentChannel = newChannel;
+			}
+			
+			event.setMessage(replaceMessageMarker(event.getMessage()));
+		}
+		
+		String message = String.format(event.getFormat(), event.getPlayer().getDisplayName(), event.getMessage());
+		event.setFormat(ChatChannel.MARKER_PREFIX + currentChannel.getName() + ChatChannel.MARKER_SUFFIX + event.getFormat());
+		chatManager.addMessageHistory(currentChannel, ChatUtilities.buildChatPacket(message, false, false));
+	}
 
-		chatManager.addMessageHistory(manager.getActiveChatChannel(), ChatUtilities.buildChatPacket(message, false, false));
+	private String replaceMessageMarker(String message) {
+		String channelName = message.substring(message.indexOf(ChatChannel.MARKER_PREFIX) + ChatChannel.MARKER_PREFIX.length());
+		channelName = channelName.substring(0, channelName.indexOf(ChatChannel.MARKER_SUFFIX));
+		
+		return message.replace(ChatChannel.MARKER_PREFIX + channelName + ChatChannel.MARKER_SUFFIX, "");
+	}
+
+	private ChatChannel tryGetChannelName(String channelName) {
+		channelName = channelName.substring(channelName.indexOf(ChatChannel.MARKER_PREFIX) + ChatChannel.MARKER_PREFIX.length());
+		channelName = channelName.substring(0, channelName.indexOf(ChatChannel.MARKER_SUFFIX));
+		
+		ChatChannel newChannel = chatManager.getChannel(channelName);
+		
+		return newChannel;
 	}
 
 	@EventHandler
