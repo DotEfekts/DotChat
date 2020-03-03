@@ -25,7 +25,9 @@ class ChatUtilities {
 	static PacketContainer addChannelPrefix(PacketContainer message, String sourceChannelName) {
 		PacketContainer multiMessage = message.shallowClone();
 		WrappedChatComponent chatComponent = multiMessage.getChatComponents().readSafely(0);
-		List<BaseComponent> messageComponents = new ArrayList<BaseComponent>(Arrays.asList(ComponentSerializer.parse(chatComponent.getJson())));
+		List<BaseComponent> messageComponents = chatComponent != null?
+				new ArrayList<BaseComponent>(Arrays.asList(ComponentSerializer.parse(chatComponent.getJson())))
+				: new ArrayList<BaseComponent>(Arrays.asList(TextComponent.fromLegacyText("")));
 		messageComponents.addAll(0, Arrays.asList(TextComponent.fromLegacyText(sourceChannelName)));
 		chatComponent.setJson(ComponentSerializer.toString(messageComponents.toArray(new BaseComponent[messageComponents.size()])));
 		

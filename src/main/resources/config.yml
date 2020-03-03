@@ -1,6 +1,14 @@
 # Whether the all channel should be shown. This channel will combine all tabs into one channel. Defaults to true. 
 # Messages sent while viewing this will be sent to the last selected channel.
 enable-all: true
+# Enable private party chat. Defaults to true.
+enable-party: true
+# Whether players are sent the party chat history after joining the channel. Defaults to true.
+party-history: true
+# Whether players are able to private message other players. Defaults to true.
+enable-pm: true
+# Whether players are sent the pm chat history when reopening a pm window. Defaults to true.
+pm-history: true
 # Which channel system messages should be sent to. Set to all to send to all channels. Defaults to system.
 system-messages: system
 # List of channels and their configuration
@@ -55,17 +63,30 @@ format:
   tab-separator: "§8|"
   # The format of each tab name. Key; 
   # $n: Standard name display. $a: name-active display. 
+  # $t: Insert the talk switch button if available. $c: Insert the close button if available.
   # $u{}: Unread message format, will hide everything inside {} when there are none. $u: The number of unread messages (inside $u{}).
-  tab-name: " $n$u{§7(§e$u§7)} "
+  tab-name: " $n$u{§7(§e$u§7)}$t$c "
   # The format of the selected tab name.
-  tab-name-active: " $a "
+  tab-name-active: " $a$c "
   # The format for the name of the tab messages will be send to (when in all).
-  tab-name-chatting: " §8[$n§8] "
+  tab-name-chatting: " §8[$n§8]$c "
+  # The format for talk switch button on the tab.
+  tab-talk: "§8[§7T§8]"
+  # The format for the close button on the tab.
+  tab-close: "§8[§cX§8]"
   # The format of the all tab name.
   all-channel-name: "All"
   # The format of the all tab name when selected.
   all-channel-name-active: "§lAll"
   # The format of the source channel shown in all. Can be left blank.
   all-source-name: "§8[$n§8] "
+  # The format of the party tab name.
+  party-channel-name: "§dParty"
+  # The format of the party tab name when selected.
+  party-channel-name-active: "§d§lParty"
+  # The format of a PM tab name. Use $u to get the username.
+  pm-channel-name: "§b$u"
+  # The format of the party tab name when selected.
+  pm-channel-name-active: "§b§l$u"
 
     

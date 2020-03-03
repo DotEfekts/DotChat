@@ -1,6 +1,7 @@
 package net.dotefekts.dotchat;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
@@ -13,8 +14,14 @@ import com.comphenix.protocol.ProtocolManager;
 import com.comphenix.protocol.events.PacketContainer;
 
 public class ChatManager {
+	private static final String[] BLOCKED_CHANNEL_NAMES = { "all", "party" };
+	
 	private ProtocolManager protocolManager;
 	private Format formatting;
+	private int partyOrder = -1;
+	private int pmOrder = -1;
+	private boolean sendPartyHistory;
+	private boolean sendPmHistory;
 	private ChatChannel multiChannel = null;
 	private ChatChannel defaultChannel = null;
 	private ChatChannel systemMessageChannel = null;
@@ -36,15 +43,22 @@ public class ChatManager {
 					"all", 
 					channelOrder++,
 					this.formatting.getAllTabName(), 
-					this.formatting.getAllTabActiveName(), 
+					this.formatting.getAllTabNameActive(), 
 					true, 
 					true, 
 					true,
 					false,
-					true,
+					false,
 					true);
 			channels.put("all", multiChannel);
 		}
+		
+		if(config.getBoolean("enable-party", true)) {
+			partyOrder = channelOrder++;
+		}
+		
+		sendPartyHistory = config.getBoolean("party-history", true);
+		sendPmHistory = config.getBoolean("pm-history", true);
 		
 		ConfigurationSection channelsSection = config.getConfigurationSection("channels");
 		if(channelsSection == null) {
@@ -62,19 +76,23 @@ public class ChatManager {
 			
 		} else {
 			for(String channel : channelsSection.getKeys(false)) {
-				ConfigurationSection channelSection = channelsSection.getConfigurationSection(channel);
-				String displayName = channelSection.getString("name", "§7" + channel);
-				channels.put(channel, new ChatChannel(
-						channel, 
-						channelOrder++,
-						displayName, 
-						channelSection.getString("name-active", displayName), 
-						false, 
-						channelSection.getBoolean("public", true), 
-						channelSection.getBoolean("auto-join", true),
-						channelSection.getBoolean("can-leave", true),
-						channelSection.getBoolean("can-talk", true),
-						channelSection.getBoolean("history", true)));
+				if(!Arrays.asList(BLOCKED_CHANNEL_NAMES).contains(channel.toLowerCase())) {
+					ConfigurationSection channelSection = channelsSection.getConfigurationSection(channel);
+					String displayName = channelSection.getString("name", "§7" + channel.toLowerCase());
+					channels.put(channel.toLowerCase(), new ChatChannel(
+							channel.toLowerCase(), 
+							channelOrder++,
+							displayName, 
+							channelSection.getString("name-active", displayName), 
+							false, 
+							channelSection.getBoolean("public", true), 
+							channelSection.getBoolean("auto-join", true),
+							channelSection.getBoolean("can-leave", true),
+							channelSection.getBoolean("can-talk", true),
+							channelSection.getBoolean("history", true)));
+				} else {
+					plugin.getLogger().warning("Attempted to register a restricted channel name (" + channel + ").");
+				}
 			}
 		}
 		
@@ -115,6 +133,24 @@ public class ChatManager {
 					true,
 					true));
 		}
+		
+		pmOrder = channelOrder;
+	}
+	
+	public int getPartyOrder() {
+		return partyOrder;
+	}
+
+	public boolean sendPartyHistory() {
+		return sendPartyHistory;
+	}
+	
+	public int getPmOrder() {
+		return pmOrder;
+	}
+
+	public boolean sendPmHistory() {
+		return sendPmHistory;
 	}
 
 	public List<ChatChannel> getChannels() {
@@ -122,7 +158,7 @@ public class ChatManager {
 	}
 
 	public ChatChannel getChannel(String channelName) {
-		return channels.get(channelName);
+		return channels.get(channelName.toLowerCase());
 	}
 	
 	public ChatChannel getMultiChannel() {
@@ -148,7 +184,7 @@ public class ChatManager {
 		
 		if(manager == null) {
 			List<ChatChannel> channels = getDefaultPlayerChannels(player);
-			manager = new PlayerChatManager(protocolManager, this, formatting, player, multiChannel != null ? multiChannel : defaultChannel, defaultChannel, channels);
+			manager = new PlayerChatManager(protocolManager, this, pmOrder, formatting, player, multiChannel != null ? multiChannel : defaultChannel, defaultChannel, channels);
 			playerManagers.put(player.getUniqueId(), manager);
 		}
 		
@@ -161,7 +197,11 @@ public class ChatManager {
 	}
 
 	public void destroyPlayerManager(Player player) {
-		playerManagers.remove(player.getUniqueId());
+		PlayerChatManager manager = playerManagers.get(player.getUniqueId());
+		if(manager != null) {
+			manager.destroy();
+			playerManagers.remove(player.getUniqueId());
+		}
 	}
 	
 	private List<ChatChannel> getDefaultPlayerChannels(Player player) {

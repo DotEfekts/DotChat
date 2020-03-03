@@ -5,3 +5,13 @@ author: DotEfekts
 website: http://www.dotefekts.net/
 depend: [DotUtilities,ProtocolLib]
 api-version: 1.15
+permissions:
+  dotchat.switch:
+    default: true
+    description: Allows user to switch channel.
+  dotchat.join:
+    default: true
+    description: Allows user to join a channel.
+  dotchat.leave:
+    default: true
+    description: Allows a user to leave a channel.
